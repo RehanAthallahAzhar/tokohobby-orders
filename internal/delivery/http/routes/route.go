@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/handlers"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/handlers"
 
 	"github.com/labstack/echo/v4"
 )

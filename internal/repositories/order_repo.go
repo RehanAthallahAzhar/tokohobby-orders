@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/db"
-	apperrors "github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/errors"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/db"
+	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
 )
 
 type OrderRepository interface {

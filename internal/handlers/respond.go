@@ -6,8 +6,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/models"
-	apperrors "github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/errors"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/models"
+	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
 	"github.com/labstack/echo/v4"
 )
 

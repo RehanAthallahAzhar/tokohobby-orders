@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/models"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/models"
 	"github.com/streadway/amqp"
 )
 

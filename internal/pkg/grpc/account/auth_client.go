@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	authpb "github.com/RehanAthallahAzhar/shopeezy-protos/pb/auth"
+	authpb "github.com/RehanAthallahAzhar/tokohobby-protos/pb/auth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"

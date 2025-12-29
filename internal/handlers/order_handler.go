@@ -5,9 +5,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/entities"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/models"
-	apperrors "github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/errors"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/entities"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/models"
+	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
 )
 
 func (api *API) CreateOrder() echo.HandlerFunc {

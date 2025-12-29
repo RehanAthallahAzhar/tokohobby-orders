@@ -3,7 +3,7 @@ package account
 import (
 	"fmt"
 
-	accountpb "github.com/RehanAthallahAzhar/shopeezy-protos/pb/account"
+	accountpb "github.com/RehanAthallahAzhar/tokohobby-protos/pb/account"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

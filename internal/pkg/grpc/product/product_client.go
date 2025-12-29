@@ -3,7 +3,7 @@ package productclient
 import (
 	"fmt"
 
-	productpb "github.com/RehanAthallahAzhar/shopeezy-protos/pb/product"
+	productpb "github.com/RehanAthallahAzhar/tokohobby-protos/pb/product"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

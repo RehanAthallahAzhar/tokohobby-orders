@@ -16,17 +16,17 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/db"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/entities"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/gateways/messaging"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/helpers"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/models"
-	apperrors "github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/errors"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/redis"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/repositories"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/db"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/entities"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/gateways/messaging"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/helpers"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/models"
+	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/redis"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/repositories"
 
-	accountpb "github.com/RehanAthallahAzhar/shopeezy-protos/pb/account"
-	productpb "github.com/RehanAthallahAzhar/shopeezy-protos/pb/product"
+	accountpb "github.com/RehanAthallahAzhar/tokohobby-protos/pb/account"
+	productpb "github.com/RehanAthallahAzhar/tokohobby-protos/pb/product"
 )
 
 type OrderService interface {

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/models"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/grpc/account"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/models"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/grpc/account"
 	"github.com/sirupsen/logrus"
 
 	"github.com/labstack/echo/v4"

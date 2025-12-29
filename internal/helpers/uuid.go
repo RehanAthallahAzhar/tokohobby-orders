@@ -4,7 +4,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/errors"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
 )
 
 /*

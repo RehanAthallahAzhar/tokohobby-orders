@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/helpers"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/pkg/errors"
-	"github.com/RehanAthallahAzhar/shopeezy-orders/internal/services"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/helpers"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/services"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
