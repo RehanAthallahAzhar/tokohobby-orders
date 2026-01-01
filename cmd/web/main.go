@@ -16,8 +16,8 @@ import (
 
 	"github.com/RehanAthallahAzhar/tokohobby-orders/db"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/configs"
-	dbGenerated "github.com/RehanAthallahAzhar/tokohobby-orders/internal/db"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/handlers"
+	dbGenerated "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/db"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -41,11 +41,10 @@ import (
 
 func main() {
 	log := logger.NewLogger()
-	log.Info("Memulai Order Service...")
 
 	cfg, err := configs.LoadConfig(log)
 	if err != nil {
-		log.Fatalf("FATAL: Gagal memuat konfigurasi: %v", err)
+		log.Fatalf("FATAL: Failed to load config: %v", err)
 	}
 
 	dbCredential := models.Credential{
@@ -84,7 +83,7 @@ func main() {
 		log.Fatalf("Failed to execute database migrations: %v", err)
 	}
 
-	// Init SQLC Store untuk Transaksi
+	// Init SQLC Store for transaction
 	sqlcQueries := dbGenerated.New(conn)
 	store := dbGenerated.NewStore(conn)
 
@@ -135,18 +134,14 @@ func main() {
 	orderHandler := handlers.NewHandler(orderService, log)
 
 	// midlleware
-	authMiddleware := customMiddleware.AuthMiddleware(authClientWrapper, log)
+	authMiddleware := customMiddleware.AuthMiddleware(authClientWrapper, cfg.Server.JWTSecret, cfg.Server.Audience, log)
 
 	// Setup Server Web
 	e := echo.New()
 	e.Use(middleware.RequestID())
 	e.Use(customMiddleware.LoggingMiddleware(log))
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{
-			"http://localhost",
-			"http://localhost:5173",
-			"http://72.61.142.248",
-		},
+		AllowOrigins: []string{"*"},
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))

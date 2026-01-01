@@ -16,11 +16,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/db"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/entities"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/gateways/messaging"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/helpers"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/models"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/db"
 	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/redis"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/repositories"

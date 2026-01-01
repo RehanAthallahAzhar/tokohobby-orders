@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
-	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/db"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/db"
 	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
 )
 
