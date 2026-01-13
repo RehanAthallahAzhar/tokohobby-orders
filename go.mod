@@ -3,7 +3,7 @@ module github.com/RehanAthallahAzhar/tokohobby-orders
 go 1.24.5
 
 require (
-	github.com/RehanAthallahAzhar/tokohobby-messaging-go v0.2.0
+	github.com/RehanAthallahAzhar/tokohobby-messaging-go v0.3.0
 	github.com/RehanAthallahAzhar/tokohobby-protos v0.0.0-20251228082717-30b8d4498bbb
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/go-playground/validator/v10 v10.30.1

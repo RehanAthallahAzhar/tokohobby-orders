@@ -2,8 +2,8 @@ github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/RehanAthallahAzhar/tokohobby-messaging-go v0.2.0 h1:RIkp2swwl4j++IPeE+GjVjxcpZ0h7buvBKXsQa9N+8c=
-github.com/RehanAthallahAzhar/tokohobby-messaging-go v0.2.0/go.mod h1:3sS6spHgksuHLzDTCyf1IbXMgG1EaDENZ4/S1Yj0hhM=
+github.com/RehanAthallahAzhar/tokohobby-messaging-go v0.3.0 h1:RmTMEuUNCiVpAFzfsq0BHFgITyGzMI+UYjp7odC2YRk=
+github.com/RehanAthallahAzhar/tokohobby-messaging-go v0.3.0/go.mod h1:3sS6spHgksuHLzDTCyf1IbXMgG1EaDENZ4/S1Yj0hhM=
 github.com/RehanAthallahAzhar/tokohobby-protos v0.0.0-20251228082717-30b8d4498bbb h1:dznFTg7Mz7/yRpNGw2dgWEpWgv8I8rNR+UBXBtl5aM4=
 github.com/RehanAthallahAzhar/tokohobby-protos v0.0.0-20251228082717-30b8d4498bbb/go.mod h1:h9XKRPsX9xl2RJlUfWn4z817hKIF7kTHEfIpP46hin4=
 github.com/caarlos0/env/v6 v6.10.1 h1:t1mPSxNpei6M5yAeu1qtRdPAK29Nbcf/n3G7x+b3/II=

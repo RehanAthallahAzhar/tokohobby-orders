@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
@@ -17,18 +15,15 @@ import (
 
 type OrderHandler struct {
 	OrderSvc services.OrderService
-	EventPub *messaging.EventPublisher
 	log      *logrus.Logger
 }
 
 func NewOrderHandler(
 	orderSvc services.OrderService,
-	eventPub *messaging.EventPublisher,
 	log *logrus.Logger,
 ) *OrderHandler {
 	return &OrderHandler{
 		OrderSvc: orderSvc,
-		EventPub: eventPub,
 		log:      log,
 	}
 }
@@ -111,30 +106,10 @@ func (h *OrderHandler) UpdateOrderStatus(c echo.Context) error {
 	}
 
 	var order *entities.Order
-	order, err = h.OrderSvc.UpdateOrderStatus(ctx, orderID, req.Status)
+	order, err = h.OrderSvc.UpdateOrderStatus(ctx, orderID, messaging.OrderStatus(req.Status))
 	if err != nil {
 		return handleGetError(c, err)
 	}
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		event := messaging.OrderStatusChangedEvent{
-			OrderID: order.ID.String(),
-			UserID:  order.UserID.String(),
-			// Email:        order.UserEmail,
-			OldStatus:   messaging.OrderStatus(req.CurrentStatus),
-			NewStatus:   messaging.OrderStatus(order.OrderStatus),
-			TotalAmount: order.TotalPrice,
-			// ProductCount: len(order.),
-			ChangedAt: time.Now(),
-		}
-
-		if err := h.EventPub.PublishOrderStatusChanged(ctx, event); err != nil {
-			h.log.Errorf("Failed to publish order status changed: %v", err)
-		}
-	}()
 
 	return respondSuccess(c, http.StatusOK, "Order status updated", order)
 }

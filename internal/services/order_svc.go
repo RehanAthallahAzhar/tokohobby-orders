@@ -18,6 +18,7 @@ import (
 
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/entities"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/helpers"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/messaging"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/models"
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/db"
 	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
@@ -32,18 +33,19 @@ type OrderService interface {
 	CreateOrder(ctx context.Context, userID uuid.UUID, req models.OrderDetailReq) (*entities.Order, error)
 	GetOrdersByUserID(ctx context.Context, userID uuid.UUID) ([]entities.OrderDetails, error)
 	GetOrderItemsByOrderID(ctx context.Context, ID uuid.UUID) ([]entities.OrderItem, error)
-	UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, status string) (*entities.Order, error)
+	UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, newStatus messaging.OrderStatus) (*entities.Order, error)
 	CancelOrder(ctx context.Context, orderID uuid.UUID, userID uuid.UUID) (*entities.Order, error)
 	ResetAllOrderCaches(ctx context.Context) error
 }
 
 type orderServiceImpl struct {
-	orderRepo     repositories.OrderRepository
-	redisClient   *redis.RedisClient
-	productClient productpb.ProductServiceClient
-	accountClient accountpb.AccountServiceClient
-	validator     *validator.Validate
-	log           *logrus.Logger
+	orderRepo      repositories.OrderRepository
+	redisClient    *redis.RedisClient
+	productClient  productpb.ProductServiceClient
+	accountClient  accountpb.AccountServiceClient
+	eventPublisher *messaging.EventPublisher
+	validator      *validator.Validate
+	log            *logrus.Logger
 }
 
 func NewOrderService(
@@ -51,16 +53,18 @@ func NewOrderService(
 	redisClient *redis.RedisClient,
 	productClient productpb.ProductServiceClient,
 	accountClient accountpb.AccountServiceClient,
+	eventPublisher *messaging.EventPublisher,
 	validator *validator.Validate,
 	log *logrus.Logger,
 ) OrderService {
 	return &orderServiceImpl{
-		orderRepo:     orderRepo,
-		redisClient:   redisClient,
-		productClient: productClient,
-		accountClient: accountClient,
-		validator:     validator,
-		log:           log,
+		orderRepo:      orderRepo,
+		redisClient:    redisClient,
+		productClient:  productClient,
+		accountClient:  accountClient,
+		eventPublisher: eventPublisher,
+		validator:      validator,
+		log:            log,
 	}
 }
 
@@ -69,7 +73,7 @@ type ItemWithProductAndSeller interface {
 }
 
 type OrderSource interface {
-	db.GetOrdersByUserIDRow | db.Order
+	db.GetOrdersByUserIDRow | db.Order | db.GetOrderByIDRow
 }
 
 func (s *orderServiceImpl) CreateOrder(ctx context.Context, userID uuid.UUID, req models.OrderDetailReq) (*entities.Order, error) {
@@ -174,8 +178,21 @@ func (s *orderServiceImpl) CreateOrder(ctx context.Context, userID uuid.UUID, re
 		return nil, fmt.Errorf("failed to commit db transaction: %w", err)
 	}
 
-	// event asinkron ke RabbitMQ
-	// go s.publishOrderCreatedEvent(dbOrder.ID, userID, totalPrice)
+	// Publish order created event asynchronously
+	go func() {
+		event := messaging.OrderCreatedEvent{
+			OrderID:       dbOrder.ID.String(),
+			UserID:        userID.String(),
+			TotalAmount:   totalPrice,
+			ItemCount:     len(req.Items),
+			PaymentMethod: req.Order.PaymentMethod,
+			CreatedAt:     time.Now(),
+		}
+
+		if err := s.eventPublisher.PublishOrderCreated(context.Background(), event); err != nil {
+			s.log.WithError(err).Warn("Failed to publish order created event")
+		}
+	}()
 
 	s.InvalidateCachesForOrderChange(ctx, userID, dbOrder.ID)
 
@@ -345,19 +362,36 @@ func (s *orderServiceImpl) GetOrderItemsByOrderID(ctx context.Context, ID uuid.U
 
 }
 
-func (s *orderServiceImpl) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, status string) (*entities.Order, error) {
-	tx, err := s.orderRepo.BeginTx(ctx)
+func (s *orderServiceImpl) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, newStatus messaging.OrderStatus) (*entities.Order, error) {
+	order, err := s.orderRepo.UpdateOrderStatus(ctx, orderID, string(newStatus))
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin db transaction: %w", err)
+		return nil, err
 	}
 
-	updatedOrder, err := s.orderRepo.UpdateOrderStatus(ctx, tx, orderID, status)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update order status: %w", err)
-	}
-	defer tx.Rollback()
+	// Publish status changed event asynchronously
+	go func() {
+		totalPrice, err := helpers.StringToFloat64(order.TotalPrice)
+		if err != nil {
+			s.log.WithError(err).Warn("Failed to convert total price to float64")
+			totalPrice = 0
+		}
 
-	return toDomainOrder(updatedOrder), nil
+		event := messaging.OrderStatusChangedEvent{
+			OrderID:     orderID.String(),
+			UserID:      order.UserID.String(),
+			Email:       "", // TODO: Get from user service if needed
+			OldStatus:   "", // TODO: Track old status if needed
+			NewStatus:   newStatus,
+			TotalAmount: totalPrice,
+			ChangedAt:   time.Now(),
+		}
+
+		if err := s.eventPublisher.PublishOrderStatusChanged(context.Background(), event); err != nil {
+			s.log.WithError(err).Warn("Failed to publish order status event")
+		}
+	}()
+
+	return toDomainOrder(order), nil
 }
 
 func (s *orderServiceImpl) CancelOrder(ctx context.Context, orderID uuid.UUID, userID uuid.UUID) (*entities.Order, error) {
@@ -400,6 +434,32 @@ func (s *orderServiceImpl) CancelOrder(ctx context.Context, orderID uuid.UUID, u
 	}
 
 	s.InvalidateCachesForOrderChange(ctx, userID, dbOrder.ID)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		totalPrice, err := helpers.StringToFloat64(dbOrder.TotalPrice)
+		if err != nil {
+			s.log.WithError(err).Warn("Failed to convert total price to float64")
+			totalPrice = 0
+		}
+
+		event := messaging.OrderStatusChangedEvent{
+			OrderID: dbOrder.ID.String(),
+			UserID:  dbOrder.UserID.String(),
+			// Email:        order.UserEmail,
+			// OldStatus:   messaging.OrderStatus(req.CurrentStatus),
+			NewStatus:   messaging.OrderStatus(dbOrder.OrderStatus),
+			TotalAmount: totalPrice,
+			// ProductCount: len(order.),
+			ChangedAt: time.Now(),
+		}
+
+		if err := s.eventPublisher.PublishOrderStatusChanged(ctx, event); err != nil {
+			s.log.Errorf("Failed to publish order status canceled: %v", err)
+		}
+	}()
 
 	return toDomainOrder(dbOrder), nil
 }

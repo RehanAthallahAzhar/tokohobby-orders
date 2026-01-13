@@ -110,7 +110,13 @@ func main() {
 	authClientWrapper := account.NewAuthClientFromService(authClient, accountConn)
 
 	// Initialize RabbitMQ
-	rmqConfig := messaging.DefaultConfig()
+	rmqConfig := &messaging.RabbitMQConfig{
+		URL:            cfg.RabbitMQ.URL,
+		MaxRetries:     cfg.RabbitMQ.MaxRetries,
+		RetryDelay:     cfg.RabbitMQ.RetryDelay,
+		PrefetchCount:  cfg.RabbitMQ.PrefetchCount,
+		ReconnectDelay: cfg.RabbitMQ.ReconnectDelay,
+	}
 	rmq, err := messaging.NewRabbitMQ(rmqConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
@@ -128,8 +134,8 @@ func main() {
 	// Dependency Injection
 	validate := validator.New()
 	orderRepo := repositories.NewOrderRepository(conn, sqlcQueries, store, log)
-	orderService := services.NewOrderService(orderRepo, redisClient, productClient, accountClient, validate, log)
-	orderHandler := handlers.NewOrderHandler(orderService, eventPublisher, log)
+	orderService := services.NewOrderService(orderRepo, redisClient, productClient, accountClient, eventPublisher, validate, log)
+	orderHandler := handlers.NewOrderHandler(orderService, log)
 
 	// midlleware
 	authMiddleware := customMiddleware.AuthMiddleware(authClientWrapper, cfg.Server.JWTSecret, cfg.Server.Audience, log)

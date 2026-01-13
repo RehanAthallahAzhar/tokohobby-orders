@@ -3,6 +3,7 @@ package helpers
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	"github.com/google/uuid"
 )
@@ -27,4 +28,8 @@ func StringToNullString(val string) sql.NullString {
 		String: val,
 		Valid:  true,
 	}
+}
+
+func StringToFloat64(val string) (float64, error) {
+	return strconv.ParseFloat(val, 64)
 }

@@ -3,24 +3,23 @@ package repositories
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/db"
-	apperrors "github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/errors"
 )
 
 type OrderRepository interface {
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 	CreateOrder(ctx context.Context, tx *sql.Tx, params db.CreateOrderParams) (db.Order, error)
 	CreateOrderItem(ctx context.Context, tx *sql.Tx, params db.CreateOrderItemParams) (db.OrderItem, error)
+	GetOrderByID(ctx context.Context, orderID uuid.UUID) (db.GetOrderByIDRow, error)
 	GetOrdersByUserID(ctx context.Context, userID uuid.UUID) ([]db.GetOrdersByUserIDRow, error)
 	GetOrderItemsByOrderID(ctx context.Context, orderIDs uuid.UUID) ([]db.GetOrderItemsByOrderIDRow, error)
 	GetOrderItemsByOrderIDs(ctx context.Context, orderIDs []uuid.UUID) ([]db.GetOrderItemsByOrderIDsRow, error)
-	UpdateOrderStatus(ctx context.Context, tx *sql.Tx, orderID uuid.UUID, status string) (db.Order, error)
+	UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, status string) (db.Order, error)
 	CancelOrder(ctx context.Context, tx *sql.Tx, orderID uuid.UUID, userID uuid.UUID) (db.Order, error)
 	GetItemsForRestock(ctx context.Context, tx *sql.Tx, orderID uuid.UUID) ([]db.GetItemsForRestockRow, error)
 }
@@ -79,6 +78,15 @@ func (r *orderRepository) CreateOrderItem(ctx context.Context, tx *sql.Tx, param
 	return createdItem, nil
 }
 
+func (r *orderRepository) GetOrderByID(ctx context.Context, orderID uuid.UUID) (db.GetOrderByIDRow, error) {
+	order, err := r.store.GetOrderByID(ctx, orderID)
+	if err != nil {
+		r.log.WithFields(logrus.Fields{"order_id": orderID, "error": err}).Error("Failed to receive order from DB")
+		return db.GetOrderByIDRow{}, fmt.Errorf("failed to receive order from DB: %w", err)
+	}
+	return order, nil
+}
+
 func (r *orderRepository) GetOrdersByUserID(ctx context.Context, userID uuid.UUID) ([]db.GetOrdersByUserIDRow, error) {
 	orders, err := r.store.GetOrdersByUserID(ctx, userID)
 	if err != nil {
@@ -111,12 +119,21 @@ func (r *orderRepository) GetItemsForRestock(ctx context.Context, tx *sql.Tx, or
 	return qtx.GetItemsForRestock(ctx, orderID)
 }
 
-func (r *orderRepository) UpdateOrderStatus(ctx context.Context, tx *sql.Tx, orderID uuid.UUID, status string) (db.Order, error) {
-	qtx := r.q.WithTx(tx)
-	return qtx.UpdateOrderStatus(ctx, db.UpdateOrderStatusParams{
+func (r *orderRepository) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, status string) (db.Order, error) {
+	order, err := r.q.UpdateOrderStatus(ctx, db.UpdateOrderStatusParams{
 		ID:          orderID,
 		OrderStatus: db.OrderStatus(status),
 	})
+
+	if err == sql.ErrNoRows {
+		return db.Order{}, fmt.Errorf("order not found")
+	}
+
+	if err != nil {
+		return db.Order{}, fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	return order, nil
 }
 
 func (r *orderRepository) CancelOrder(ctx context.Context, tx *sql.Tx, orderID uuid.UUID, userID uuid.UUID) (db.Order, error) {
@@ -125,10 +142,11 @@ func (r *orderRepository) CancelOrder(ctx context.Context, tx *sql.Tx, orderID u
 		ID:     orderID,
 		UserID: userID,
 	})
+	if err == sql.ErrNoRows {
+		return db.Order{}, fmt.Errorf("order not found")
+	}
+
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return db.Order{}, apperrors.ErrNotFound
-		}
 		return db.Order{}, fmt.Errorf("failed to cancel order: %w", err)
 	}
 	return dbOrder, nil
