@@ -30,11 +30,19 @@ import (
 )
 
 type OrderService interface {
+	// Core CRUD operations
 	CreateOrder(ctx context.Context, userID uuid.UUID, req models.OrderDetailReq) (*entities.Order, error)
 	GetOrdersByUserID(ctx context.Context, userID uuid.UUID) ([]entities.OrderDetails, error)
 	GetOrderItemsByOrderID(ctx context.Context, ID uuid.UUID) ([]entities.OrderItem, error)
-	UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, newStatus messaging.OrderStatus) (*entities.Order, error)
+
+	// Major lifecycle actions (Enterprise-grade)
+	MarkOrderAsPaid(ctx context.Context, req models.MarkOrderAsPaidReq) (*entities.Order, error)
+	MarkOrderAsShipped(ctx context.Context, req models.MarkOrderAsShippedReq) (*entities.Order, error)
+	MarkOrderAsDelivered(ctx context.Context, req models.MarkOrderAsDeliveredReq) (*entities.Order, error)
 	CancelOrder(ctx context.Context, orderID uuid.UUID, userID uuid.UUID) (*entities.Order, error)
+
+	// Internal/Admin only
+	UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, newStatus messaging.OrderStatus) (*entities.Order, error)
 	ResetAllOrderCaches(ctx context.Context) error
 }
 
@@ -43,7 +51,7 @@ type orderServiceImpl struct {
 	redisClient    *redis.RedisClient
 	productClient  productpb.ProductServiceClient
 	accountClient  accountpb.AccountServiceClient
-	eventPublisher *messaging.EventPublisher
+	eventPublisher *messaging.EventPublisherImpl
 	validator      *validator.Validate
 	log            *logrus.Logger
 }
@@ -53,7 +61,7 @@ func NewOrderService(
 	redisClient *redis.RedisClient,
 	productClient productpb.ProductServiceClient,
 	accountClient accountpb.AccountServiceClient,
-	eventPublisher *messaging.EventPublisher,
+	eventPublisher *messaging.EventPublisherImpl,
 	validator *validator.Validate,
 	log *logrus.Logger,
 ) OrderService {
@@ -445,23 +453,201 @@ func (s *orderServiceImpl) CancelOrder(ctx context.Context, orderID uuid.UUID, u
 			totalPrice = 0
 		}
 
-		event := messaging.OrderStatusChangedEvent{
-			OrderID: dbOrder.ID.String(),
-			UserID:  dbOrder.UserID.String(),
-			// Email:        order.UserEmail,
-			// OldStatus:   messaging.OrderStatus(req.CurrentStatus),
-			NewStatus:   messaging.OrderStatus(dbOrder.OrderStatus),
-			TotalAmount: totalPrice,
-			// ProductCount: len(order.),
-			ChangedAt: time.Now(),
+		// Use specific OrderCancelledEvent instead of generic OrderStatusChangedEvent
+		event := messaging.OrderCancelledEvent{
+			OrderID:         dbOrder.ID.String(),
+			UserID:          dbOrder.UserID.String(),
+			CancelledBy:     "user",                        // User-initiated cancellation
+			CancelReason:    "User requested cancellation", // TODO: Get from request if available
+			CancelCategory:  "user_request",
+			RefundAmount:    totalPrice,
+			RefundMethod:    "original_payment",          // TODO: Determine refund method
+			CancellationFee: 0,                           // No penalty for now
+			OriginalStatus:  string(dbOrder.OrderStatus), // Status before cancellation
+			CancelledAt:     time.Now(),
 		}
 
-		if err := s.eventPublisher.PublishOrderStatusChanged(ctx, event); err != nil {
-			s.log.Errorf("Failed to publish order status canceled: %v", err)
+		if err := s.eventPublisher.PublishOrderCancelled(ctx, event); err != nil {
+			s.log.Errorf("Failed to publish order cancelled event: %v", err)
 		}
 	}()
 
 	return toDomainOrder(dbOrder), nil
+}
+
+// MarkOrderAsPaid handles payment confirmation with comprehensive validation
+func (s *orderServiceImpl) MarkOrderAsPaid(ctx context.Context, req models.MarkOrderAsPaidReq) (*entities.Order, error) {
+	// Validate request
+	if err := s.validator.Struct(req); err != nil {
+		return nil, fmt.Errorf("%w: %s", apperrors.ErrInvalidRequestPayload, err.Error())
+	}
+
+	// Verify order exists and is in correct status
+	dbOrder, err := s.orderRepo.GetOrderByID(ctx, req.OrderID)
+	if err != nil {
+		return nil, fmt.Errorf("order not found: %w", err)
+	}
+
+	// Business rule: Order must be pending to be marked as paid
+	if dbOrder.OrderStatus != "pending" {
+		return nil, fmt.Errorf("order must be in 'pending' status to mark as paid, current status: %s", dbOrder.OrderStatus)
+	}
+
+	// Update order status to paid
+	updatedOrder, err := s.orderRepo.UpdateOrderStatus(ctx, req.OrderID, "paid")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	// Invalidate caches
+	userID, _ := uuid.Parse(updatedOrder.UserID.String())
+	s.InvalidateCachesForOrderChange(ctx, userID, updatedOrder.ID)
+
+	// Publish OrderPaidEvent asynchronously
+	go func() {
+		ctxPublish, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		event := messaging.OrderPaidEvent{
+			OrderID:        updatedOrder.ID.String(),
+			UserID:         updatedOrder.UserID.String(),
+			PaidAmount:     req.PaidAmount,
+			PaymentMethod:  req.PaymentMethod,
+			PaymentGateway: req.PaymentGateway,
+			TransactionID:  req.TransactionID,
+			PaymentProof:   req.PaymentProof,
+			OriginalAmount: req.OriginalAmount,
+			DiscountAmount: req.DiscountAmount,
+			PaidAt:         time.Now(),
+		}
+
+		if err := s.eventPublisher.PublishOrderPaid(ctxPublish, event); err != nil {
+			s.log.Errorf("Failed to publish order paid event: %v", err)
+		}
+	}()
+
+	s.log.Infof("Order %s marked as paid (Payment Gateway: %s, TX: %s)",
+		updatedOrder.ID, req.PaymentGateway, req.TransactionID)
+
+	return toDomainOrder(updatedOrder), nil
+}
+
+// MarkOrderAsShipped handles shipment initiation with tracking information
+func (s *orderServiceImpl) MarkOrderAsShipped(ctx context.Context, req models.MarkOrderAsShippedReq) (*entities.Order, error) {
+	// Validate request
+	if err := s.validator.Struct(req); err != nil {
+		return nil, fmt.Errorf("%w: %s", apperrors.ErrInvalidRequestPayload, err.Error())
+	}
+
+	// Verify order exists
+	dbOrder, err := s.orderRepo.GetOrderByID(ctx, req.OrderID)
+	if err != nil {
+		return nil, fmt.Errorf("order not found: %w", err)
+	}
+
+	// Business rule: Order must be paid before shipping
+	if dbOrder.OrderStatus != "paid" {
+		return nil, fmt.Errorf("order must be 'paid' before shipping, current status: %s", dbOrder.OrderStatus)
+	}
+
+	// Update order status to shipped
+	updatedOrder, err := s.orderRepo.UpdateOrderStatus(ctx, req.OrderID, "shipped")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	// Invalidate caches
+	userID, _ := uuid.Parse(updatedOrder.UserID.String())
+	s.InvalidateCachesForOrderChange(ctx, userID, updatedOrder.ID)
+
+	// Parse estimated arrival
+	estimatedArrival, err := time.Parse(time.RFC3339, req.EstimatedArrival)
+	if err != nil {
+		// If parsing fails, default to 3 days from now
+		estimatedArrival = time.Now().Add(3 * 24 * time.Hour)
+		s.log.Warnf("Failed to parse estimated arrival, using default (3 days): %v", err)
+	}
+
+	// Publish OrderShippedEvent asynchronously
+	go func() {
+		ctxPublish, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		event := messaging.OrderShippedEvent{
+			OrderID:          updatedOrder.ID.String(),
+			UserID:           updatedOrder.UserID.String(),
+			TrackingNumber:   req.TrackingNumber,
+			Courier:          req.Courier,
+			WarehouseID:      req.WarehouseID,
+			PackageWeight:    req.PackageWeight,
+			ShippingCost:     req.ShippingCost,
+			EstimatedArrival: estimatedArrival,
+			ShippedAt:        time.Now(),
+		}
+
+		if err := s.eventPublisher.PublishOrderShipped(ctxPublish, event); err != nil {
+			s.log.Errorf("Failed to publish order shipped event: %v", err)
+		}
+	}()
+
+	s.log.Infof("Order %s marked as shipped (Courier: %s, Tracking: %s)",
+		updatedOrder.ID, req.Courier, req.TrackingNumber)
+
+	return toDomainOrder(updatedOrder), nil
+}
+
+// MarkOrderAsDelivered handles successful delivery confirmation
+func (s *orderServiceImpl) MarkOrderAsDelivered(ctx context.Context, req models.MarkOrderAsDeliveredReq) (*entities.Order, error) {
+	// Validate request
+	if err := s.validator.Struct(req); err != nil {
+		return nil, fmt.Errorf("%w: %s", apperrors.ErrInvalidRequestPayload, err.Error())
+	}
+
+	// Verify order exists
+	dbOrder, err := s.orderRepo.GetOrderByID(ctx, req.OrderID)
+	if err != nil {
+		return nil, fmt.Errorf("order not found: %w", err)
+	}
+
+	// Business rule: Order must be shipped before delivery
+	if dbOrder.OrderStatus != "shipped" {
+		return nil, fmt.Errorf("order must be 'shipped' before delivery, current status: %s", dbOrder.OrderStatus)
+	}
+
+	// Update order status to delivered
+	updatedOrder, err := s.orderRepo.UpdateOrderStatus(ctx, req.OrderID, "delivered")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	// Invalidate caches
+	userID, _ := uuid.Parse(updatedOrder.UserID.String())
+	s.InvalidateCachesForOrderChange(ctx, userID, updatedOrder.ID)
+
+	// Publish OrderDeliveredEvent asynchronously
+	go func() {
+		ctxPublish, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		event := messaging.OrderDeliveredEvent{
+			OrderID:       updatedOrder.ID.String(),
+			UserID:        updatedOrder.UserID.String(),
+			ReceiverName:  req.ReceiverName,
+			DeliveryProof: req.DeliveryProof,
+			DeliveryNotes: req.DeliveryNotes,
+			DeliveredAt:   time.Now(),
+			ShippedAt:     updatedOrder.UpdatedAt, // Approximation
+		}
+
+		if err := s.eventPublisher.PublishOrderDelivered(ctxPublish, event); err != nil {
+			s.log.Errorf("Failed to publish order delivered event: %v", err)
+		}
+	}()
+
+	s.log.Infof("Order %s marked as delivered (Receiver: %s)",
+		updatedOrder.ID, req.ReceiverName)
+
+	return toDomainOrder(updatedOrder), nil
 }
 
 // ------- HELPERS -------
@@ -492,7 +678,7 @@ func collectIDsForEnrichment[T ItemWithProductAndSeller](items []T) (productIDs 
 func (s *orderServiceImpl) fetchProductDetails(ctx context.Context, productIDs []string) (map[string]*productpb.Product, error) {
 	productsResponse, err := s.productClient.GetProducts(ctx, &productpb.GetProductsRequest{Ids: productIDs})
 	if err != nil {
-		return nil, fmt.Errorf("gagal mengambil detail produk via gRPC: %w", err)
+		return nil, fmt.Errorf("failed to get product details via gRPC: %w", err)
 	}
 
 	productDetailsMap := make(map[string]*productpb.Product)
@@ -506,7 +692,7 @@ func (s *orderServiceImpl) fetchProductDetails(ctx context.Context, productIDs [
 func (s *orderServiceImpl) fetchAccountDetails(ctx context.Context, sellerIDs []string) (map[string]*accountpb.User, error) {
 	accountResponse, err := s.accountClient.GetUsers(ctx, &accountpb.GetUsersRequest{Ids: sellerIDs})
 	if err != nil {
-		return nil, fmt.Errorf("gagal mengambil detail seller via gRPC: %w", err)
+		return nil, fmt.Errorf("failed to get account details via gRPC: %w", err)
 	}
 
 	accountDetailsMap := make(map[string]*accountpb.User)

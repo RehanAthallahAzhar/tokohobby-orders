@@ -36,7 +36,7 @@ import (
 	authpb "github.com/RehanAthallahAzhar/tokohobby-protos/pb/auth"
 	productpb "github.com/RehanAthallahAzhar/tokohobby-protos/pb/product"
 
-	messaging "github.com/RehanAthallahAzhar/tokohobby-messaging-go"
+	rabbitmq "github.com/RehanAthallahAzhar/tokohobby-messaging/rabbitmq"
 	orderMsg "github.com/RehanAthallahAzhar/tokohobby-orders/internal/messaging"
 )
 
@@ -110,21 +110,21 @@ func main() {
 	authClientWrapper := account.NewAuthClientFromService(authClient, accountConn)
 
 	// Initialize RabbitMQ
-	rmqConfig := &messaging.RabbitMQConfig{
+	rmqConfig := &rabbitmq.RabbitMQConfig{
 		URL:            cfg.RabbitMQ.URL,
 		MaxRetries:     cfg.RabbitMQ.MaxRetries,
 		RetryDelay:     cfg.RabbitMQ.RetryDelay,
 		PrefetchCount:  cfg.RabbitMQ.PrefetchCount,
 		ReconnectDelay: cfg.RabbitMQ.ReconnectDelay,
 	}
-	rmq, err := messaging.NewRabbitMQ(rmqConfig)
+	rmq, err := rabbitmq.NewRabbitMQ(rmqConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
 	}
 	defer rmq.Close()
 
 	// Setup exchange
-	if err := messaging.SetupOrderExchange(rmq); err != nil {
+	if err := rabbitmq.SetupOrderExchange(rmq); err != nil {
 		log.Fatalf("Failed to setup order exchange: %v", err)
 	}
 

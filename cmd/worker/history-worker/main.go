@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	messaging "github.com/RehanAthallahAzhar/tokohobby-messaging-go"
+	rabbitmq "github.com/RehanAthallahAzhar/tokohobby-messaging/rabbitmq"
 	orderMsg "github.com/RehanAthallahAzhar/tokohobby-orders/internal/messaging"
 )
 
@@ -16,15 +16,15 @@ func main() {
 	log.Println("🚀 Starting Order History Worker...")
 
 	// Initialize RabbitMQ
-	rmqConfig := messaging.DefaultConfig()
-	rmq, err := messaging.NewRabbitMQ(rmqConfig)
+	rmqConfig := rabbitmq.DefaultConfig()
+	rmq, err := rabbitmq.NewRabbitMQ(rmqConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
 	}
 	defer rmq.Close()
 
 	// Setup queue - selective binding (paid & delivered only)
-	if err := messaging.SetupOrderHistoryQueue(rmq); err != nil {
+	if err := rabbitmq.SetupOrderHistoryQueue(rmq); err != nil {
 		log.Fatalf("Failed to setup queue: %v", err)
 	}
 
@@ -34,7 +34,7 @@ func main() {
 	handler := func(ctx context.Context, body []byte) error {
 		var event orderMsg.OrderStatusChangedEvent
 
-		if err := messaging.UnmarshalMessage(body, &event); err != nil {
+		if err := rabbitmq.UnmarshalMessage(body, &event); err != nil {
 			return fmt.Errorf("failed to unmarshal: %w", err)
 		}
 
@@ -46,12 +46,12 @@ func main() {
 	}
 
 	// Create consumer
-	consumerOpts := messaging.ConsumerOptions{
+	consumerOpts := rabbitmq.ConsumerOptions{
 		QueueName:   "order.user.history",
 		WorkerCount: 3,
 		AutoAck:     false,
 	}
-	consumer := messaging.NewConsumer(rmq, consumerOpts, handler)
+	consumer := rabbitmq.NewConsumer(rmq, consumerOpts, handler)
 
 	// Start consuming
 	ctx, cancel := context.WithCancel(context.Background())

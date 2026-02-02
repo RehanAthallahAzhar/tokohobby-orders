@@ -7,24 +7,48 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	messaging "github.com/RehanAthallahAzhar/tokohobby-messaging-go"
+	rabbitmq "github.com/RehanAthallahAzhar/tokohobby-messaging/rabbitmq"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/configs"
 	orderMsg "github.com/RehanAthallahAzhar/tokohobby-orders/internal/messaging"
+	"github.com/RehanAthallahAzhar/tokohobby-orders/internal/pkg/logger"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
-	log.Println("🚀 Starting Order Email Notification Worker...")
+	log := logger.NewLogger()
+	log.SetFormatter(&logrus.JSONFormatter{
+		TimestampFormat: time.RFC3339,
+	})
+	log.SetOutput(os.Stdout)
+	log.SetLevel(logrus.DebugLevel)
+
+	cfg, err := configs.LoadConfig(log)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	log.Info("🚀 Starting Order Email Notification Worker...")
 
 	// Initialize RabbitMQ
-	rmqConfig := messaging.DefaultConfig()
-	rmq, err := messaging.NewRabbitMQ(rmqConfig)
+	rmqConfig := &rabbitmq.RabbitMQConfig{
+		URL:            cfg.RabbitMQ.URL,
+		MaxRetries:     cfg.RabbitMQ.MaxRetries,
+		RetryDelay:     cfg.RabbitMQ.RetryDelay,
+		PrefetchCount:  cfg.RabbitMQ.PrefetchCount,
+		ReconnectDelay: cfg.RabbitMQ.ReconnectDelay,
+	}
+	rmq, err := rabbitmq.NewRabbitMQ(rmqConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
 	}
 	defer rmq.Close()
 
+	log.Info("Connected to RabbitMQ successfully")
+
 	// Setup queue
-	if err := messaging.SetupOrderEmailQueue(rmq); err != nil {
+	if err := rabbitmq.SetupOrderEmailQueue(rmq); err != nil {
 		log.Fatalf("Failed to setup queue: %v", err)
 	}
 
@@ -34,7 +58,7 @@ func main() {
 	handler := func(ctx context.Context, body []byte) error {
 		var event orderMsg.OrderStatusChangedEvent
 
-		if err := messaging.UnmarshalMessage(body, &event); err != nil {
+		if err := rabbitmq.UnmarshalMessage(body, &event); err != nil {
 			return fmt.Errorf("failed to unmarshal: %w", err)
 		}
 
@@ -46,12 +70,12 @@ func main() {
 	}
 
 	// Create consumer - consume ALL status changes
-	consumerOpts := messaging.ConsumerOptions{
+	consumerOpts := rabbitmq.ConsumerOptions{
 		QueueName:   "order.email.notifications",
 		WorkerCount: 5, // 5 concurrent workers
 		AutoAck:     false,
 	}
-	consumer := messaging.NewConsumer(rmq, consumerOpts, handler)
+	consumer := rabbitmq.NewConsumer(rmq, consumerOpts, handler)
 
 	// Start consuming
 	ctx, cancel := context.WithCancel(context.Background())

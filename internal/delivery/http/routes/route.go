@@ -7,7 +7,7 @@ import (
 )
 
 func InitRoutes(e *echo.Echo, orderHandler *handlers.OrderHandler, authMiddleware echo.MiddlewareFunc) {
-	order := e.Group("/orders")
+	order := e.Group("/api/orders")
 	order.Use(authMiddleware)
 	{
 		order.POST("/", orderHandler.CreateOrder())
