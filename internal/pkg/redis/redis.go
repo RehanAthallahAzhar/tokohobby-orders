@@ -30,8 +30,8 @@ func NewRedisClient(cfg *configs.RedisConfig, log *logrus.Logger) (*RedisClient,
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
-		Password: "",
-		DB:       0,
+		Password: cfg.Password, // Use password from config
+		DB:       cfg.DB,       // Use DB from config
 	})
 
 	return &RedisClient{Client: rdb, log: log}, nil
